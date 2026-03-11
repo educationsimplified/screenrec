@@ -95,15 +95,15 @@ const elDot = document.getElementById('status-dot');
 const elPeerId = document.getElementById('peer-id-display');
 const elCamPreview = document.getElementById('cam-preview');
 
-// Generate short 6-char ID
 function genShortId() {
   return Math.random().toString(36).substr(2,6).toUpperCase();
 }
 
 async function initPeer() {
   const shortId = genShortId();
-  // Use a known free PeerJS cloud server
-  peer = new Peer('capturepro-phone-' + shortId, {
+  myPeerId = shortId;
+
+  peer = new Peer('cpro-phone-' + shortId, {
     host: '0.peerjs.com', port: 443, path: '/', secure: true,
     config: { iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -113,34 +113,24 @@ async function initPeer() {
   });
 
   peer.on('open', id => {
-    myPeerId = shortId;
     elPeerId.textContent = shortId;
-    setStatus('waiting', 'Waiting for PC — show code above');
+    setStatus('waiting', 'Waiting for PC — enter code above on PC');
   });
 
-  peer.on('connection', c => {
-    conn = c;
-    setStatus('connected', 'PC connected! ✓');
-    c.on('data', d => handlePCMessage(d));
-    c.on('close', () => setStatus('waiting', 'PC disconnected'));
-    // Send stream if already started
-    if (localStream) sendStreamToPC();
-  });
-
+  // PC answers our call with empty stream — we just ignore it
   peer.on('call', call => {
-    call.answer(localStream);
-    call.on('stream', ()=>{});
+    call.answer(new MediaStream());
   });
 
   peer.on('error', e => {
-    console.error('Peer error:', e);
-    setStatus('waiting', 'Connection error — retrying...');
+    console.error('Phone peer error:', e);
+    setStatus('waiting', 'Error — retrying...');
     setTimeout(initPeer, 3000);
   });
 }
 
 function setStatus(state, msg) {
-  elDot.className = state==='connected' ? 'connected' : 'waiting';
+  elDot.className = state;
   elStatus.textContent = msg;
 }
 
@@ -149,11 +139,11 @@ async function startCamera() {
   const constraints = {
     video: {
       facingMode,
-      width: q==='4k'?{ideal:3840}:q==='fullhd'?{ideal:1920}:{ideal:1280},
+      width:  q==='4k'?{ideal:3840}:q==='fullhd'?{ideal:1920}:{ideal:1280},
       height: q==='4k'?{ideal:2160}:q==='fullhd'?{ideal:1080}:{ideal:720},
-      frameRate: {ideal:30,max:60}
+      frameRate: {ideal:30}
     },
-    audio: { echoCancellation: false, noiseSuppression: false }
+    audio: { echoCancellation:false, noiseSuppression:false }
   };
   try {
     if (localStream) localStream.getTracks().forEach(t=>t.stop());
@@ -161,7 +151,6 @@ async function startCamera() {
     elCamPreview.srcObject = localStream;
     document.getElementById('btn-start-cam').textContent = '✓ Camera Active';
     document.getElementById('btn-start-cam').style.background = 'var(--success)';
-    if (peer && peer.open) sendStreamToPC();
     return true;
   } catch(e) {
     alert('Camera error: ' + e.message);
@@ -169,75 +158,66 @@ async function startCamera() {
   }
 }
 
-function sendStreamToPC() {
-  if (!peer || !conn || !localStream) return;
-  // Send via PeerJS media call — PC will receive the stream
-  // The PC connects as caller, phone answers — but we can also call PC
-  // Send a signal to PC that stream is ready
-  conn.send({type:'stream-ready', peerId: peer.id});
-}
-
 function flipCamera() {
   facingMode = facingMode === 'environment' ? 'user' : 'environment';
   if (localStream) startCamera();
 }
 
-function handlePCMessage(data) {
-  if (data.type === 'ping') conn.send({type:'pong'});
-  if (data.type === 'flip') flipCamera();
-  if (data.type === 'quality') {
-    document.getElementById('quality-sel').value = data.value;
-    startCamera();
+function connectToPC(pcCode) {
+  if (!peer || !peer.open) {
+    peer.on('open', () => connectToPC(pcCode));
+    return;
   }
+  if (!localStream) { alert('Start camera first'); return; }
+
+  const pcFullId = 'cpro-pc-' + pcCode.toUpperCase();
+
+  // Step 1: open data channel so PC knows we are here
+  const dc = peer.connect(pcFullId, {reliable:true});
+  conn = dc;
+  dc.on('open', () => {
+    setStatus('connected', 'Data channel open, sending video...');
+    dc.on('data', d => {
+      if (d.type === 'flip') flipCamera();
+    });
+    // Step 2: call PC with our video stream
+    const call = peer.call(pcFullId, localStream);
+    call.on('stream', ()=>{}); // PC sends empty stream back
+    call.on('error', e => { console.warn('call error', e); setStatus('waiting','Stream error'); });
+    call.on('close', () => setStatus('waiting','Disconnected from PC'));
+    setStatus('connected', 'Streaming to PC ✓');
+  });
+  dc.on('error', e => { console.warn('dc err', e); setStatus('waiting','Connection failed'); });
+  dc.on('close', () => setStatus('waiting','PC disconnected'));
 }
 
 function connectManual() {
   const id = document.getElementById('manual-peer-id').value.trim().toUpperCase();
-  if (!id || id.length < 4) { alert('Enter the PC code'); return; }
-  connectToPC('capturepro-pc-' + id);
+  if (!id || id.length < 4) { alert('Enter the 6-digit PC code'); return; }
+  connectToPC(id);
 }
-
-function connectToPC(pcFullId) {
-  if (!peer || !peer.open) { alert('Peer not ready, wait a moment'); return; }
-  const c = peer.connect(pcFullId, {reliable:true});
-  conn = c;
-  c.on('open', () => {
-    setStatus('connected', 'Connected to PC ✓');
-    if (localStream) sendStreamToPC();
-  });
-  c.on('data', d => handlePCMessage(d));
-  c.on('close', () => setStatus('waiting', 'PC disconnected'));
-  c.on('error', e => { console.error(e); setStatus('waiting', 'Connection failed'); });
-}
-
-// Also make phone callable so PC can call us
-peer && peer.on('call', call => {
-  call.answer(localStream || new MediaStream());
-});
 
 document.getElementById('btn-start-cam').onclick = startCamera;
 
-// Init
+// Init peer
 initPeer();
 
-// Auto-connect if ?pc=CODE is in URL (came from QR scan)
+// Auto-connect if ?pc=CODE in URL (from QR scan)
 window.addEventListener('load', () => {
   const params = new URLSearchParams(window.location.search);
   const pcCode = params.get('pc');
   if (pcCode) {
     document.getElementById('manual-peer-id').value = pcCode.toUpperCase();
-    // Auto-start camera then connect
     startCamera().then(ok => {
-      if (ok) {
-        setTimeout(() => {
-          const fullPCId = 'capturepro-pc-' + pcCode.toUpperCase();
-          if (peer && peer.open) connectToPC(fullPCId);
-          else peer.on('open', () => connectToPC(fullPCId));
-        }, 1500);
-      }
+      if (!ok) return;
+      const tryConnect = () => {
+        if (peer && peer.open) connectToPC(pcCode);
+        else setTimeout(tryConnect, 500);
+      };
+      setTimeout(tryConnect, 800);
     });
   }
-});
+
 </script>
 </body>
 </html>
