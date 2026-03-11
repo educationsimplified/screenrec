@@ -91,7 +91,27 @@ select:focus{border-color:var(--accent);}
 .recording-item:hover{border-color:var(--accent);}
 @keyframes slideIn{from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:translateY(0);}}
 
-/* ── MIC TEST PANEL ── */
+/* ── VIDEO PLAYER MODAL ── */
+#player-modal{display:none;position:fixed;inset:0;background:rgba(5,5,8,.92);backdrop-filter:blur(14px);z-index:600;align-items:center;justify-content:center;flex-direction:column;gap:0;}
+#player-modal.show{display:flex;}
+#player-wrap{width:min(90vw,1100px);background:var(--surface);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.7);}
+#player-video{width:100%;display:block;aspect-ratio:16/9;background:#000;outline:none;}
+#player-controls{padding:14px 18px;background:var(--surface2);display:flex;flex-direction:column;gap:10px;}
+
+/* Seekbar */
+#seekbar-wrap{position:relative;height:6px;background:rgba(255,255,255,.1);border-radius:999px;cursor:pointer;overflow:visible;}
+#seekbar-buffered{position:absolute;top:0;left:0;height:100%;background:rgba(255,255,255,.15);border-radius:999px;pointer-events:none;}
+#seekbar-fill{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:999px;pointer-events:none;transition:width .1s linear;}
+#seekbar-thumb{position:absolute;top:50%;width:14px;height:14px;background:#fff;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 6px rgba(0,229,255,.6);opacity:0;transition:opacity .15s;}
+#seekbar-wrap:hover #seekbar-thumb{opacity:1;}
+
+#player-time{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);}
+#player-btn-row{display:flex;align-items:center;gap:10px;}
+.p-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Syne',sans-serif;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.p-btn:hover{border-color:var(--accent);color:var(--accent);}
+.p-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
+#vol-slider{width:80px;accent-color:var(--accent);cursor:pointer;}
+#player-title{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:right;}
 #mic-test-panel{display:none;}
 #mic-test-panel.active{display:block;}
 #recorder-panel{display:block;}
@@ -577,6 +597,40 @@ select:focus{border-color:var(--accent);}
   </div>
 </div>
 
+<!-- ══ IN-APP VIDEO PLAYER MODAL ══ -->
+<div id="player-modal" onclick="if(event.target===this)closePlayer()">
+  <div id="player-wrap">
+    <video id="player-video" preload="auto" playsinline></video>
+    <div id="player-controls">
+      <!-- Seekbar -->
+      <div id="seekbar-wrap" id="seekbar">
+        <div id="seekbar-buffered"></div>
+        <div id="seekbar-fill" style="width:0%"></div>
+        <div id="seekbar-thumb" style="left:0%"></div>
+      </div>
+      <!-- Button row -->
+      <div id="player-btn-row">
+        <button class="p-btn" id="p-play-btn" onclick="playerTogglePlay()">
+          <svg id="p-play-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Play
+        </button>
+        <button class="p-btn" onclick="playerSkip(-10)">−10s</button>
+        <button class="p-btn" onclick="playerSkip(10)">+10s</button>
+        <span id="player-time" style="margin:0 4px;">0:00 / 0:00</span>
+        <button class="p-btn" id="p-mute-btn" onclick="playerToggleMute()">🔊</button>
+        <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="1" oninput="playerVol(this.value)">
+        <button class="p-btn" onclick="playerSpeed(0.5)">0.5×</button>
+        <button class="p-btn" onclick="playerSpeed(1)" class="active">1×</button>
+        <button class="p-btn" onclick="playerSpeed(1.5)">1.5×</button>
+        <button class="p-btn" onclick="playerSpeed(2)">2×</button>
+        <button class="p-btn" onclick="playerFullscreen()">⛶</button>
+        <span id="player-title"></span>
+        <button class="p-btn" onclick="closePlayer()" style="margin-left:auto;border-color:var(--danger);color:var(--danger);">✕ Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"><span id="toast-icon">✓</span><span id="toast-msg"></span></div>
 
@@ -908,10 +962,10 @@ function renderRecordings() {
   }
   list.innerHTML = recordings.map((r,i) => `
     <div class="recording-item">
-      <div style="width:34px;height:34px;border-radius:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid var(--border);">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      <div style="width:34px;height:34px;border-radius:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid var(--border);cursor:pointer;" onclick="playRecording(${i})" title="Play">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       </div>
-      <div style="flex:1;min-width:0;">
+      <div style="flex:1;min-width:0;cursor:pointer;" onclick="playRecording(${i})">
         <p style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.filename}</p>
         <p style="font-size:11px;color:var(--muted);">${r.ts} · ${r.sizeMB} MB · <span style="text-transform:uppercase;color:var(--accent);">${r.ext}</span></p>
       </div>
@@ -927,6 +981,145 @@ function renderRecordings() {
   `).join('');
 }
 function deleteRec(i) { URL.revokeObjectURL(recordings[i].url); recordings.splice(i,1); renderRecordings(); }
+
+// ════════════════════════════════════════════════════
+//  IN-APP VIDEO PLAYER — fully working seekbar
+// ════════════════════════════════════════════════════
+const playerModal = document.getElementById('player-modal');
+const playerVideo = document.getElementById('player-video');
+const seekFill    = document.getElementById('seekbar-fill');
+const seekThumb   = document.getElementById('seekbar-thumb');
+const seekBuf     = document.getElementById('seekbar-buffered');
+const seekWrap    = document.getElementById('seekbar-wrap');
+const playerTime  = document.getElementById('player-time');
+const pPlayBtn    = document.getElementById('p-play-btn');
+const pPlayIcon   = document.getElementById('p-play-icon');
+let isSeeking = false, currentRecIdx = -1;
+
+const PLAY_ICON  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+const PAUSE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+
+function playRecording(i) {
+  currentRecIdx = i;
+  const r = recordings[i];
+  playerVideo.src = r.url;
+  playerVideo.load();
+  document.getElementById('player-title').textContent = r.filename;
+  playerModal.classList.add('show');
+  playerVideo.play().catch(()=>{});
+}
+
+function closePlayer() {
+  playerVideo.pause();
+  playerVideo.src = '';
+  playerModal.classList.remove('show');
+}
+
+// Update seekbar on timeupdate — this is the key fix
+// Use requestAnimationFrame for smooth scrubbing instead of timeupdate alone
+let rafPlayer = null;
+function playerRAF() {
+  if (!playerVideo.paused && !playerVideo.ended) {
+    updateSeekUI();
+    rafPlayer = requestAnimationFrame(playerRAF);
+  }
+}
+
+playerVideo.addEventListener('play',  () => { updatePlayBtn(true);  rafPlayer = requestAnimationFrame(playerRAF); });
+playerVideo.addEventListener('pause', () => { updatePlayBtn(false); cancelAnimationFrame(rafPlayer); updateSeekUI(); });
+playerVideo.addEventListener('ended', () => { updatePlayBtn(false); updateSeekUI(); });
+playerVideo.addEventListener('timeupdate', updateSeekUI);
+
+// Buffered progress
+playerVideo.addEventListener('progress', () => {
+  if (playerVideo.duration && playerVideo.buffered.length) {
+    const end = playerVideo.buffered.end(playerVideo.buffered.length - 1);
+    seekBuf.style.width = (end / playerVideo.duration * 100) + '%';
+  }
+});
+
+playerVideo.addEventListener('loadedmetadata', () => {
+  updateSeekUI();
+  seekBuf.style.width = '0%';
+});
+
+function updateSeekUI() {
+  const dur = playerVideo.duration;
+  const cur = playerVideo.currentTime;
+  if (!dur || isNaN(dur)) return;
+  const pct = (cur / dur) * 100;
+  seekFill.style.width  = pct + '%';
+  seekThumb.style.left  = pct + '%';
+  playerTime.textContent = fmtSec(cur) + ' / ' + fmtSec(dur);
+}
+
+function updatePlayBtn(playing) {
+  pPlayBtn.innerHTML = (playing ? PAUSE_ICON + ' Pause' : PLAY_ICON + ' Play');
+}
+
+function fmtSec(s) {
+  if (isNaN(s)) return '0:00';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+  return h > 0
+    ? h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')
+    : m+':'+String(sec).padStart(2,'0');
+}
+
+// ── Seekbar mouse/touch interaction ──
+function seekTo(e) {
+  const rect = seekWrap.getBoundingClientRect();
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const pct = Math.max(0, Math.min(1, x / rect.width));
+  if (playerVideo.duration && !isNaN(playerVideo.duration)) {
+    playerVideo.currentTime = pct * playerVideo.duration;
+    updateSeekUI();
+  }
+}
+
+seekWrap.addEventListener('mousedown',  e => { isSeeking=true; seekTo(e); });
+seekWrap.addEventListener('touchstart', e => { isSeeking=true; seekTo(e); }, {passive:true});
+document.addEventListener('mousemove',  e => { if(isSeeking) seekTo(e); });
+document.addEventListener('touchmove',  e => { if(isSeeking) seekTo(e); }, {passive:true});
+document.addEventListener('mouseup',    () => { isSeeking=false; });
+document.addEventListener('touchend',  () => { isSeeking=false; });
+
+// Keyboard shortcuts in player
+document.addEventListener('keydown', e => {
+  if (!playerModal.classList.contains('show')) return;
+  if (e.key === ' ' || e.key === 'k') { e.preventDefault(); playerTogglePlay(); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); playerSkip(5); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); playerSkip(-5); }
+  if (e.key === 'Escape') closePlayer();
+  if (e.key === 'f' || e.key === 'F') playerFullscreen();
+});
+
+function playerTogglePlay() {
+  playerVideo.paused ? playerVideo.play() : playerVideo.pause();
+}
+function playerSkip(sec) {
+  playerVideo.currentTime = Math.max(0, Math.min(playerVideo.duration||0, playerVideo.currentTime + sec));
+  updateSeekUI();
+}
+function playerToggleMute() {
+  playerVideo.muted = !playerVideo.muted;
+  document.getElementById('p-mute-btn').textContent = playerVideo.muted ? '🔇' : '🔊';
+}
+function playerVol(v) {
+  playerVideo.volume = parseFloat(v);
+  playerVideo.muted = (v == 0);
+  document.getElementById('p-mute-btn').textContent = v == 0 ? '🔇' : '🔊';
+}
+function playerSpeed(s) {
+  playerVideo.playbackRate = s;
+  document.querySelectorAll('#player-btn-row .p-btn').forEach(b => {
+    if (b.textContent === s+'×') b.classList.add('active'); else b.classList.remove('active');
+  });
+}
+function playerFullscreen() {
+  const el = document.getElementById('player-wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else el.requestFullscreen().catch(()=>{});
+}
 
 /* ── Timer ── */
 function startTimer() {
@@ -1329,6 +1522,194 @@ let pcPeer = null, phoneConn = null, phoneCall = null;
 let pcPeerId = null, phonePIPVisible = true;
 const phonePIPWrap = document.getElementById('phone-pip-wrap');
 const phonePIPVideo = document.getElementById('phone-pip-video');
+
+function genPCCode() {
+  return Math.random().toString(36).substr(2,6).toUpperCase();
+}
+
+function initPCPeer() {
+  if (pcPeer && !pcPeer.destroyed) return;
+  const code = genPCCode();
+  pcPeerId = code;
+
+  pcPeer = new Peer('cpro-pc-' + code, {
+    host: '0.peerjs.com', port: 443, path: '/', secure: true,
+    config: { iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ]}
+  });
+
+  pcPeer.on('open', () => {
+    document.getElementById('pc-code-display').textContent = code;
+    renderQR(code);
+    updatePhoneURL(code);
+    document.getElementById('qr-conn-status').textContent = '⏳ Waiting for phone to connect...';
+    document.getElementById('qr-conn-status').style.color = 'var(--muted)';
+  });
+
+  // Phone sends video stream TO the PC as a media call
+  pcPeer.on('call', call => {
+    call.answer(new MediaStream()); // answer with empty stream
+    phoneCall = call;
+    call.on('stream', stream => {
+      if (stream && stream.getVideoTracks().length > 0) onPhoneStream(stream);
+    });
+    call.on('close', onPhoneDisconnect);
+    call.on('error', e => console.warn('call err', e));
+  });
+
+  // Data channel for control messages
+  pcPeer.on('connection', conn => {
+    phoneConn = conn;
+    document.getElementById('qr-conn-status').innerHTML = '✅ Phone connected — camera starting...';
+    document.getElementById('qr-conn-status').style.color = 'var(--success)';
+    conn.on('close', onPhoneDisconnect);
+  });
+
+  pcPeer.on('error', e => {
+    console.warn('PC Peer error:', e.type, e.message);
+    if (e.type === 'unavailable-id') {
+      // ID taken — generate new one
+      pcPeer.destroy();
+      pcPeer = null;
+      setTimeout(initPCPeer, 500);
+    } else {
+      setTimeout(initPCPeer, 5000);
+    }
+  });
+
+  pcPeer.on('disconnected', () => {
+    if (pcPeer && !pcPeer.destroyed) pcPeer.reconnect();
+  });
+}
+
+function onPhoneStream(stream) {
+  phonePIPVideo.srcObject = stream;
+  phonePIPVideo.play().catch(()=>{});
+  phonePIPWrap.classList.add('show');
+  phonePIPVisible = true;
+  document.getElementById('phone-conn-badge').style.display = 'inline-flex';
+  document.getElementById('phone-cam-controls').style.display = 'flex';
+  const tog = document.getElementById('btn-pip-toggle');
+  if(tog) tog.textContent = 'Hide';
+  closeQRModal();
+  showToast('📱 Phone camera live!', 'success');
+}
+
+function onPhoneDisconnect() {
+  phonePIPWrap.classList.remove('show');
+  if(phonePIPVideo.srcObject){ phonePIPVideo.srcObject.getTracks().forEach(t=>t.stop()); phonePIPVideo.srcObject = null; }
+  document.getElementById('phone-conn-badge').style.display = 'none';
+  document.getElementById('phone-cam-controls').style.display = 'none';
+  showToast('Phone camera disconnected', '');
+}
+
+function openPhoneQR() {
+  document.getElementById('qr-modal').classList.add('show');
+  if (!pcPeer || pcPeer.destroyed) {
+    initPCPeer();
+  } else {
+    // Already have a code — show it
+    document.getElementById('pc-code-display').textContent = pcPeerId;
+    renderQR(pcPeerId);
+    updatePhoneURL(pcPeerId);
+  }
+}
+
+function closeQRModal() {
+  document.getElementById('qr-modal').classList.remove('show');
+}
+
+function updatePhoneURL(code) {
+  const base = window.location.href.replace(/[^/]*$/, '');
+  const url = base + 'phone.html?pc=' + code;
+  const el = document.getElementById('phone-url-display');
+  if(el) el.textContent = url.length>55 ? url.substring(0,55)+'…' : url;
+}
+
+function renderQR(code) {
+  const base = window.location.href.replace(/[^/]*$/, '');
+  const url = base + 'phone.html?pc=' + code;
+  const canvas = document.getElementById('qr-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,200,200);
+  ctx.fillStyle='#111118'; ctx.fillRect(0,0,200,200);
+
+  if (window.QRCode) {
+    const tmp = document.createElement('div');
+    tmp.style.cssText='position:absolute;left:-9999px;top:-9999px;';
+    document.body.appendChild(tmp);
+    try {
+      new QRCode(tmp, {
+        text: url, width:190, height:190,
+        colorDark:'#e2e8f0', colorLight:'#111118',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      setTimeout(()=>{
+        const img = tmp.querySelector('img') || tmp.querySelector('canvas');
+        if(img) ctx.drawImage(img,5,5,190,190);
+        try{document.body.removeChild(tmp);}catch(e){}
+      }, 300);
+    } catch(e){ try{document.body.removeChild(tmp);}catch(e2){} drawFallbackQR(ctx,code); }
+  } else {
+    drawFallbackQR(ctx, code);
+  }
+}
+
+function drawFallbackQR(ctx, code) {
+  ctx.fillStyle='#1a1a26'; ctx.fillRect(0,0,200,200);
+  ctx.fillStyle='#00e5ff'; ctx.textAlign='center';
+  ctx.font='bold 11px monospace'; ctx.fillText('Open phone.html and type:', 100, 55);
+  ctx.font='bold 30px Space Mono, monospace'; ctx.fillStyle='#e2e8f0';
+  ctx.fillText(code, 100, 105);
+  ctx.font='11px monospace'; ctx.fillStyle='#64748b';
+  ctx.fillText('in the code field', 100, 145);
+}
+
+const PIP_SIZES = { sm:{w:160,h:213}, md:{w:240,h:320}, lg:{w:340,h:453} };
+
+function phonePIPSize(size) {
+  if (size === 'full') {
+    phonePIPVideo.style.width  = Math.floor(window.innerWidth*0.46)+'px';
+    phonePIPVideo.style.height = Math.floor(window.innerHeight*0.70)+'px';
+    phonePIPWrap.style.cssText = 'display:flex;flex-direction:column;position:fixed;bottom:0;left:0;z-index:300;';
+    phonePIPVideo.style.borderRadius = '0';
+  } else {
+    const s = PIP_SIZES[size]||PIP_SIZES.md;
+    phonePIPVideo.style.width  = s.w+'px';
+    phonePIPVideo.style.height = s.h+'px';
+    phonePIPWrap.style.bottom = '90px';
+    phonePIPWrap.style.left   = '20px';
+    phonePIPVideo.style.borderRadius = '12px 12px 0 0';
+  }
+  ['sm','md','lg','full'].forEach(k=>{
+    const b=document.getElementById('pipsize-'+k);
+    if(b){ b.style.borderColor=k===size?'var(--accent)':''; b.style.color=k===size?'var(--accent)':''; }
+  });
+}
+
+function togglePhonePIP() {
+  phonePIPVisible = !phonePIPVisible;
+  phonePIPVideo.style.display = phonePIPVisible ? 'block' : 'none';
+  const t = document.getElementById('btn-pip-toggle');
+  if(t) t.textContent = phonePIPVisible ? 'Hide' : 'Show';
+}
+
+function phoneFlipCam() {
+  if (phoneConn && phoneConn.open) phoneConn.send({type:'flip'});
+  else showToast('Phone not connected','error');
+}
+
+function disconnectPhone() {
+  if (phoneCall) { try{phoneCall.close();}catch(e){} phoneCall=null; }
+  if (phoneConn) { try{phoneConn.close();}catch(e){} phoneConn=null; }
+  onPhoneDisconnect();
+}
+
+// Pre-warm peer connection 2s after load
+window.addEventListener('load', () => setTimeout(initPCPeer, 2000));
 
 function genPCCode() {
   return Math.random().toString(36).substr(2,6).toUpperCase();
