@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>CapturePro — Phone Camera</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{--accent:#00e5ff;--danger:#ef4444;--success:#10b981;--bg:#0a0a0f;--surface:#111118;--border:#2a2a3a;--text:#e2e8f0;--muted:#64748b;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,'Syne',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px;}
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Space+Mono:wght@700&display=swap');
+
+  .logo{display:flex;align-items:center;gap:10px;margin-bottom:28px;}
+  .logo-icon{width:36px;height:36px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#000;}
+  .logo-text{font-size:20px;font-weight:800;letter-spacing:-0.5px;}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:360px;margin-bottom:16px;}
+  .card-title{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:14px;}
+
+  #peer-id-display{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;letter-spacing:6px;color:var(--accent);text-align:center;padding:16px 0;line-height:1;}
+  #status-dot{width:10px;height:10px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:8px;transition:background .3s;}
+  #status-dot.connected{background:var(--success);box-shadow:0 0 8px var(--success);}
+  #status-dot.waiting{background:var(--accent);animation:pulse 1.5s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+  #cam-preview{width:100%;max-width:360px;border-radius:12px;background:#050508;border:1px solid var(--border);aspect-ratio:9/16;object-fit:cover;display:block;margin-bottom:16px;}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;max-width:360px;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;margin-bottom:10px;}
+  .btn-primary{background:var(--accent);color:#000;}
+  .btn-primary:active{transform:scale(.97);}
+  .btn-ghost{background:var(--surface);border:1px solid var(--border);color:var(--text);}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn:disabled{opacity:.35;}
+
+  #facing-btn{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 20px;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px;}
+
+  select{background:#1a1a26;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:14px;width:100%;max-width:360px;font-family:inherit;outline:none;margin-bottom:10px;}
+
+  .info-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:8px;}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(0,229,255,.1);color:var(--accent);border:1px solid rgba(0,229,255,.2);}
+</style>
+</head>
+<body>
+
+<div class="logo">
+  <div class="logo-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-width="1.5"/></svg>
+  </div>
+  <span class="logo-text">CapturePro</span>
+</div>
+
+<div class="card">
+  <div class="card-title">📱 Phone Camera</div>
+  <div class="info-row">
+    <span id="status-dot" class="waiting"></span>
+    <span id="status-text">Waiting for PC to connect...</span>
+  </div>
+  <div id="peer-id-display" id="peer-id">—</div>
+  <p style="text-align:center;font-size:11px;color:var(--muted);margin-top:8px;">Show this code or QR to CapturePro on PC</p>
+</div>
+
+<video id="cam-preview" autoplay muted playsinline></video>
+
+<select id="quality-sel">
+  <option value="hd">HD 720p</option>
+  <option value="fullhd" selected>Full HD 1080p</option>
+  <option value="4k">4K (if supported)</option>
+</select>
+
+<button class="btn btn-primary" id="btn-start-cam">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+  Start Camera
+</button>
+
+<button id="facing-btn" onclick="flipCamera()">
+  🔄 Flip Camera
+</button>
+
+<br><br>
+
+<div style="width:100%;max-width:360px;">
+  <div class="card-title">🔗 Or enter PC's Peer ID manually</div>
+  <input id="manual-peer-id" placeholder="Enter 6-digit PC code" maxlength="6"
+    style="background:#1a1a26;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:12px 14px;font-size:18px;font-family:'Space Mono',monospace;letter-spacing:4px;width:100%;outline:none;text-align:center;margin-bottom:10px;text-transform:uppercase;">
+  <button class="btn btn-ghost" id="btn-connect-manual" onclick="connectManual()">Connect to PC</button>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+<script>
+let peer = null, conn = null, localStream = null, facingMode = 'environment';
+let myPeerId = null;
+
+const elStatus = document.getElementById('status-text');
+const elDot = document.getElementById('status-dot');
+const elPeerId = document.getElementById('peer-id-display');
+const elCamPreview = document.getElementById('cam-preview');
+
+// Generate short 6-char ID
+function genShortId() {
+  return Math.random().toString(36).substr(2,6).toUpperCase();
+}
+
+async function initPeer() {
+  const shortId = genShortId();
+  // Use a known free PeerJS cloud server
+  peer = new Peer('capturepro-phone-' + shortId, {
+    host: '0.peerjs.com', port: 443, path: '/', secure: true,
+    config: { iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ]}
+  });
+
+  peer.on('open', id => {
+    myPeerId = shortId;
+    elPeerId.textContent = shortId;
+    setStatus('waiting', 'Waiting for PC — show code above');
+  });
+
+  peer.on('connection', c => {
+    conn = c;
+    setStatus('connected', 'PC connected! ✓');
+    c.on('data', d => handlePCMessage(d));
+    c.on('close', () => setStatus('waiting', 'PC disconnected'));
+    // Send stream if already started
+    if (localStream) sendStreamToPC();
+  });
+
+  peer.on('call', call => {
+    call.answer(localStream);
+    call.on('stream', ()=>{});
+  });
+
+  peer.on('error', e => {
+    console.error('Peer error:', e);
+    setStatus('waiting', 'Connection error — retrying...');
+    setTimeout(initPeer, 3000);
+  });
+}
+
+function setStatus(state, msg) {
+  elDot.className = state==='connected' ? 'connected' : 'waiting';
+  elStatus.textContent = msg;
+}
+
+async function startCamera() {
+  const q = document.getElementById('quality-sel').value;
+  const constraints = {
+    video: {
+      facingMode,
+      width: q==='4k'?{ideal:3840}:q==='fullhd'?{ideal:1920}:{ideal:1280},
+      height: q==='4k'?{ideal:2160}:q==='fullhd'?{ideal:1080}:{ideal:720},
+      frameRate: {ideal:30,max:60}
+    },
+    audio: { echoCancellation: false, noiseSuppression: false }
+  };
+  try {
+    if (localStream) localStream.getTracks().forEach(t=>t.stop());
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    elCamPreview.srcObject = localStream;
+    document.getElementById('btn-start-cam').textContent = '✓ Camera Active';
+    document.getElementById('btn-start-cam').style.background = 'var(--success)';
+    if (peer && peer.open) sendStreamToPC();
+    return true;
+  } catch(e) {
+    alert('Camera error: ' + e.message);
+    return false;
+  }
+}
+
+function sendStreamToPC() {
+  if (!peer || !conn || !localStream) return;
+  // Send via PeerJS media call — PC will receive the stream
+  // The PC connects as caller, phone answers — but we can also call PC
+  // Send a signal to PC that stream is ready
+  conn.send({type:'stream-ready', peerId: peer.id});
+}
+
+function flipCamera() {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  if (localStream) startCamera();
+}
+
+function handlePCMessage(data) {
+  if (data.type === 'ping') conn.send({type:'pong'});
+  if (data.type === 'flip') flipCamera();
+  if (data.type === 'quality') {
+    document.getElementById('quality-sel').value = data.value;
+    startCamera();
+  }
+}
+
+function connectManual() {
+  const id = document.getElementById('manual-peer-id').value.trim().toUpperCase();
+  if (!id || id.length < 4) { alert('Enter the PC code'); return; }
+  connectToPC('capturepro-pc-' + id);
+}
+
+function connectToPC(pcFullId) {
+  if (!peer || !peer.open) { alert('Peer not ready, wait a moment'); return; }
+  const c = peer.connect(pcFullId, {reliable:true});
+  conn = c;
+  c.on('open', () => {
+    setStatus('connected', 'Connected to PC ✓');
+    if (localStream) sendStreamToPC();
+  });
+  c.on('data', d => handlePCMessage(d));
+  c.on('close', () => setStatus('waiting', 'PC disconnected'));
+  c.on('error', e => { console.error(e); setStatus('waiting', 'Connection failed'); });
+}
+
+// Also make phone callable so PC can call us
+peer && peer.on('call', call => {
+  call.answer(localStream || new MediaStream());
+});
+
+document.getElementById('btn-start-cam').onclick = startCamera;
+
+// Init
+initPeer();
+
+// Auto-connect if ?pc=CODE is in URL (came from QR scan)
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  const pcCode = params.get('pc');
+  if (pcCode) {
+    document.getElementById('manual-peer-id').value = pcCode.toUpperCase();
+    // Auto-start camera then connect
+    startCamera().then(ok => {
+      if (ok) {
+        setTimeout(() => {
+          const fullPCId = 'capturepro-pc-' + pcCode.toUpperCase();
+          if (peer && peer.open) connectToPC(fullPCId);
+          else peer.on('open', () => connectToPC(fullPCId));
+        }, 1500);
+      }
+    });
+  }
+});
+</script>
+</body>
+</html>
